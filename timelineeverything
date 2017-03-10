@@ -1,0 +1,109 @@
+import csv, re
+import requests
+import http.cookiejar
+from urllib import parse
+from bs4 import BeautifulSoup
+from multiprocessing import Pool
+from urllib.request import Request, urlopen, HTTPCookieProcessor, build_opener, install_opener
+
+
+
+#driver = webdriver.PhantomJS()
+#driver.set_window_size(1120, 550)
+ids = []
+channels = []
+chnids = []
+
+def start():
+    while True:
+        try:
+            cj = http.cookiejar.CookieJar()
+            opener = build_opener(HTTPCookieProcessor(cj))
+            opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+            install_opener(opener)
+            url = 'http://impactmonitor.net/app/login.php'
+            payload = {
+                'user_email': 'codeforafrica',
+                'user_password': 'kmf644HP$DtR',
+                'remember_me': '1',
+                'submit_login': 'Login'
+            }
+            data = parse.urlencode(payload).encode('ascii')
+            request = Request(url=url, data=data)
+            response = urlopen(request)
+            print('Gathering channels ids..................')
+            request = Request('http://impactmonitor.net/app/channels.php')
+            response = urlopen(request)
+            page = response.read().decode('utf-8')
+            soup = BeautifulSoup(page, 'html.parser')
+            for results in soup.find_all('a', href=re.compile(r"^channel-dashboard")):
+                if results.has_attr('href'):
+                    url = "http://impactmonitor.net/app/" + results['href']     
+                    print(url)
+                    channels.append(url)
+            for each in channels:
+                id = each.split('=')[-1]
+                chnids.append(id)
+            for id in chnids:
+                link = 'http://impactmonitor.net/app/channel-settings.php?channel_id=' + str(id)
+                print(link)
+                request = Request(link)
+                response = urlopen(request)
+                page = response.read().decode('utf-8')
+                soup = BeautifulSoup(page, 'html.parser')
+                value = soup.find('input', {'id': 'channel_uniqueid'}).get('value')
+                ids.append(value)
+        except Exception as e:
+            print(e)
+            break
+        break
+
+
+
+def work(o):
+    id = o
+    url = 'http://impactmonitor.net/app/api/timeline.php?action=view&api_key=UG6G4JM393GR03PE5R&uniqueid=' + str(id)
+    resp = requests.get(url)
+    x = resp.json()
+    channel_id = x['channel_id']
+    for item in x['data']:
+        data = item['data'].replace('{','').replace('\\','').replace('",','\t')
+        data = data.replace(' https://t.co','\thttps://t.co').replace('"','').replace('}','')
+        data = data.split('\t', 9)
+        length = len(data)
+        try:
+            timeline_id = item['timeline_id']
+            item_id = item['monitored_item_id']
+            unixtime = item['unixtime']
+            title = item['title']
+            if length >= 8:
+                rs = channel_id, 'timeline_id:'+timeline_id, 'item_id:'+item_id, 'unixtime:'+unixtime, 'title:'+title, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
+            elif length >= 7:
+                rs = channel_id, 'timeline_id:'+timeline_id, 'item_id:'+item_id, 'unixtime:'+unixtime, 'title:'+title, data[0], data[1], data[2], data[3], data[4], data[5], data[6]
+            elif length >= 6:
+                rs = channel_id, 'timeline_id:'+timeline_id, 'item_id:'+item_id, 'unixtime:'+unixtime, 'title:'+title, data[0], data[1], data[2], data[3], data[4], data[5]
+            elif length >= 5:
+                rs = channel_id, 'timeline_id:'+timeline_id, 'item_id:'+item_id, 'unixtime:'+unixtime, 'title:'+title, data[0], data[1], data[2], data[3], data[4]
+            elif length >= 4:
+                rs = channel_id, 'timeline_id:'+timeline_id, 'item_id:'+item_id, 'unixtime:'+unixtime, 'title:'+title, data[0], data[1], data[2], data[3]
+            elif length >= 3:
+                rs = channel_id, 'timeline_id:'+timeline_id, 'item_id:'+item_id, 'unixtime:'+unixtime, 'title:'+title, data[0], data[1], data[2]
+            elif length >= 2:
+                rs = channel_id, 'timeline_id:'+timeline_id, 'item_id:'+item_id, 'unixtime:'+unixtime, 'title:'+title, data[0], data[1]
+            print(rs)
+            with open('%s.csv'% channel_id, 'a') as f:
+                writer = csv.writer(f)
+                writer.writerow(rs)
+        except Exception as e:
+            print(e)
+        except IndexError as s:
+            print(s)
+            pass
+
+
+if __name__ == '__main__':
+    start()
+    pool = Pool(processes=10)  # dont increase over 10
+    pool.map_async(work, ids)
+    pool.close()
+    pool.join()
