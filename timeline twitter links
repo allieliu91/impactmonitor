@@ -1,0 +1,90 @@
+import csv, json, datetime
+import requests
+# from openpyxl import load_workbook, Workbook
+
+
+def start():
+    try:
+        channelurl = 'http://impactmonitor.net/app/api/channels.php?action=list&api_key=UG6G4JM393GR03PE5R'
+        resp = requests.get(channelurl)
+        x = resp.json()
+        print('Gathering channels ids..................')
+        for channel in x['channels']:
+            uid = channel['unique_id_token']
+            cid = channel['channel_id']
+            channelName = channel['name']
+            print('Channel {}'.format(str(uid)))
+
+            itemurl = 'http://impactmonitor.net/app/api/timeline.php?action=view&api_key=UG6G4JM393GR03PE5R&uniqueid=' + str(uid)
+            resp = requests.get(itemurl)
+            timeline = resp.json()
+            # extracting json from response
+            for item in timeline['data']:
+                timeid = item['timeline_id']
+                itemdata = json.loads(item['data'])
+                
+                if 'twitter_account' in itemdata:
+                    twacct = itemdata['twitter_account']
+                else:
+                    twacct = ''
+            work(uid)
+        print('........................................')
+    except Exception as e:
+        print('Exception {}'.format(e))
+
+
+def work(o):
+    #wb = Workbook()
+    #ws = wb.get_sheet_by_name('Sheet')
+    #ws.append(header)
+    id = o
+    url = 'http://impactmonitor.net/app/api/timeline.php?action=view&api_key=UG6G4JM393GR03PE5R&uniqueid=' + str(id)
+    resp = requests.get(url)
+    x = resp.json()
+    channel_id = x['channel_id']
+    timelines = x['data']
+    header = ["channel_id", "timeline_id", "Item_Id", "Date", "title", "Twitter_account", "Tweet_Id", "Twitter link"]
+    f = open('%s.csv'% channel_id, 'a', newline='', encoding='utf-8')
+    writer = csv.writer(f)
+    writer.writerow(header)
+    for timeline in timelines:
+        timeline_id = timeline['timeline_id']
+        item_id = timeline['monitored_item_id']
+        unixtime = timeline['unixtime']
+        title = timeline['title']
+        data = timeline['data']
+        data = json.loads(data)
+
+        if 'text' in data:
+            text = data['text']
+        else:
+            text = ''
+
+        if 'twitter_account' in data:
+            twitter_account = data['twitter_account']
+        else:
+            twitter_account = ''
+
+        if "tweet_id" in data:
+            tweet_id = data['tweet_id']
+        else:
+            tweet_id = ''
+
+        if "tweet_id" and 'twitter_account' in data:
+            twitter_link = 'https://twitter.com/' + twitter_account + r'/status/' + tweet_id
+        else:
+            twitter_link = ''
+
+        print(channel_id, timeline_id,
+              datetime.datetime.fromtimestamp(int(unixtime)).strftime('%Y-%m-%d %H:%M:%S'),
+              title, twitter_account, tweet_id, twitter_link)
+        result = (channel_id, timeline_id, item_id, datetime.datetime.fromtimestamp(int(unixtime)).strftime('%Y-%m-%d %H:%M:%S'), title, twitter_account, tweet_id, twitter_link)
+        writer.writerow(result)
+    f.close()
+        #ws.append(result)
+        #wb.save('%s.xlsx'% channel_id)
+
+
+if __name__ == '__main__':
+    start()
+
