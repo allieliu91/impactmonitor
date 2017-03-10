@@ -1,0 +1,120 @@
+import csv, re, os
+import requests
+import http.cookiejar
+import datetime
+import sys
+from urllib import parse
+from bs4 import BeautifulSoup
+from multiprocessing import Pool
+from urllib.request import Request, urlopen, HTTPCookieProcessor, build_opener, install_opener
+
+
+ids = []
+channels = []
+chnids = []
+item_id = []
+
+
+
+def start():
+    try:
+        # fetch channel IDs through the API
+        channelurl = 'http://impactmonitor.net/app/api/channels.php?action=list&api_key=UG6G4JM393GR03PE5R'
+        resp = requests.get(channelurl)
+        #extracting json from response
+        x = resp.json()
+        f = open('data/monitoreditems.csv', 'w', newline='', encoding='utf-8')
+        # write a header row to each CSV
+        headers = ('channel_id','channel_name','item_id','title','item','type','source','tier','social_score','regular_score','creation_time',
+                   'last_update_time','backlinks','authors','comments','sentiment_score','retweets','estimated_views','facebook_likes',
+                   'facebook_shares','facebook_comments','twitter_mentions','google_shares','pinterest_pins')
+
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        print('Gathering channels ids..................')
+        for channel in x['channels']:
+            uid = channel['unique_id_token']
+            cid = channel['channel_id']
+            channelName = channel['name']
+            print('Channel {}'.format(str(cid)))
+
+            # fetch item IDs through the API
+            itemurl = 'http://impactmonitor.net/app/api/channels.php?action=list_monitored_items&api_key=UG6G4JM393GR03PE5R&uniqueid=' + str(uid)
+            resp = requests.get(itemurl)
+            #extracting json from response
+            respids = resp.json()
+            for z in respids['items']:
+                itemid = z['monitored_item_id']
+                work(itemid, writer, channelName)
+                #item_id.append(itemid)
+        f.close()
+
+
+        print('........................................')
+    except Exception as e:
+        print('Exception {}',format(e))
+
+
+
+def work(o, writer, channelName): # o is to be replaced from Pool at the script which manage the used ids and the remaining ones
+    id = o
+    print('item {}'.format(str(id)))
+    # building apis links according to channels ids and then call them one by one
+    url = 'http://impactmonitor.net/app/api/items.php?action=overview&api_key=UG6G4JM393GR03PE5R&item_id=' + str(id)
+    resp = requests.get(url)
+    #extracting json from response
+    x = resp.json()
+    #x is the main container so what ever is coming is simply discriping the named elemnets pathes inside json dictionaries
+    channel_id = x['channel_id']
+    item_id = x['item_id']
+    title = x['overview']['title']
+    item = x['overview']['item']
+    itemtype = x['overview']['type']
+    source = x['overview']['source']
+    tier = x['overview']['tier']
+    social_score = x['overview']['social_score']
+    regular_score = x['overview']['regular_score']
+    creation_unixtime = x['overview']['creation_unixtime']
+    last_update_unixtime = x['overview']['last_update_unixtime']
+    if itemtype == 'url':
+        backlinks = x['overview']['backlinks']
+        authors = x['overview']['authors']
+        comments = x['overview']['comments']
+        sentiment_score = x['overview']['sentiment_score']
+        retweets = x['overview']['retweets']
+        estimated_views = x['overview']['estimated_views']
+        facebook_likes = x['overview']['facebook_likes']
+        facebook_shares = x['overview']['facebook_shares']
+        facebook_comments = x['overview']['facebook_comments']
+        twitter_mentions = x['overview']['twitter_mentions']
+        google_shares = x['overview']['google_shares']
+        pinterest_pins = x['overview']['pinterest_pins']
+    else:
+        backlinks = ''
+        authors = ''
+        comments = ''
+        sentiment_score = ''
+        retweets = ''
+        estimated_views = ''
+        facebook_likes = ''
+        facebook_shares = ''
+        facebook_comments = ''
+        twitter_mentions = ''
+        google_shares = ''
+        pinterest_pins = ''
+    # in output, convert UNIX timestamps to human readable times
+    result = (channel_id, channelName, item_id, title, item, itemtype, source, tier, social_score, regular_score,
+              datetime.datetime.fromtimestamp(int(creation_unixtime)).strftime('%Y-%m-%d %H:%M:%S'),
+              datetime.datetime.fromtimestamp(int(last_update_unixtime)).strftime('%Y-%m-%d %H:%M:%S'),
+              backlinks,authors, comments, sentiment_score, retweets, estimated_views, facebook_likes, facebook_shares, facebook_comments,
+              twitter_mentions, google_shares, pinterest_pins)
+    #    print(result)
+
+    writer.writerow(result)
+
+if __name__ == '__main__':
+    start()
+#    pool = Pool(processes=10)  # dont increase over 10!!!! 
+#    pool.map_async(work, item_id)
+#    pool.close()
+#    pool.join()
